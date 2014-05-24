@@ -1,0 +1,1 @@
+$ /c/Users/js/Downloads/opencv/build/x64/vc12/bin/opencv_traincascade.exe -vec catcierge2.vec -bg negatives.txt -numPos 2000 -numNeg 800 -minHitRate 0.999 -numStages 20 -precalcIdxBufSize 6144 -precalcValBufSize 3072 -w 24 -h 24 -bg negative.txt -data cascade03 -mode ALL -nsplits 2

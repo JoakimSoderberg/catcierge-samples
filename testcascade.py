@@ -35,6 +35,9 @@ if __name__ == '__main__':
     cascade = cv2.CascadeClassifier(cascade_fn)
     nested = cv2.CascadeClassifier(nested_fn)
 
+    img_count = 0
+    match_count = 0
+
     for img_path in os.listdir(img_dir[0]):
         print("%s" % img_path)
         img = cv2.imread(os.path.join(img_dir[0], img_path))
@@ -58,13 +61,20 @@ if __name__ == '__main__':
         draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
         cv2.imshow('facedetect', vis)
 
-        time.sleep(0.1)
+        img_count += 1
+
+        #time.sleep(0.1)
 
         if (len(rects) > 0):
+            match_count += 1
+            #cv2.waitKey(0)
+        else:
             cv2.waitKey(0)
 
         if 0xFF & cv2.waitKey(5) == 27:
             break
+
+    print("%d of %d matches ok (%d)" % (match_count, img_count, float(match_count) / img_count))
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
