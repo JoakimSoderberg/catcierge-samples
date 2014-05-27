@@ -8,6 +8,7 @@ import sys
 import signal
 import itertools as it, glob
 import shutil
+from common import draw_str
 
 opencv_filetypes = ["png","jpg","jpeg","tiff","bmp","gif","pbm","pgm","ppm","sr","ras","jpe","jp2","tif"]
 
@@ -38,6 +39,9 @@ def main():
 
 		parser.add_argument("--copy", action = "store_true",
 		                help = "Copy instead of moving images.")
+
+		parser.add_argument("--no_overlay", action = "store_true",
+						help = "Don't overlay text.")
 
 		parser.add_argument("--targets", metavar = "TARGETS", nargs = "+",
 						default = [],
@@ -81,10 +85,13 @@ def main():
 		else:
 			img_paths.append(img_path)
 
-	print("Got %d images. Skipping %d" % (len(img_paths), args.skip))
+	img_count = len(img_paths)
+	print("Got %d images. Skipping %d" % (img_count, args.skip))
 
 	# Skip images.
 	img_paths = img_paths[args.skip:]
+
+	i = args.skip + 1
 
 	for img_path in img_paths:
 		try:
@@ -92,9 +99,18 @@ def main():
 			print_targets(targetmap)
 			print("=" * 78)
 
-			print("%s" % img_path)
+			print("#%d: %s" % (i, img_path))
 
 			img = cv2.imread(img_path)
+
+			if not args.no_overlay:
+				j = 40
+				draw_str(img, (20, 20), "Image: %d of %d" % (i, img_count))
+
+				for key in targetmap.keys():
+					draw_str(img, (20, j), "%d - %s" % (key, targetmap[key]))
+					j += 20
+
 			cv2.imshow("Image sorter", img)
 
 			key = cv2.waitKey(0)
@@ -107,11 +123,17 @@ def main():
 
 				if targetmap.has_key(num):
 					to_dir = targetmap[num]
-					shutil.move(img_path, to_dir)
+
+					if args.copy:
+						shutil.copy(img_path, to_dir)
+					else:
+						shutil.move(img_path, to_dir)
+
 					print("Moved %s to %s" % (img_path, to_dir))
+			i += 1
 
 		except Exception as ex:
-			print "  %s ERROR: %s" % ex
+			print "  ERROR: %s" % ex
 
 if __name__ == "__main__":
 	main()
