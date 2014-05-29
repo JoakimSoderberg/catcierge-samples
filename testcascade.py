@@ -9,6 +9,29 @@ from common import clock, draw_str
 import argparse
 import glob
 
+def perform_match(img, snout):
+    ret, threshimg = cv2.threshold(img, 90, 255, 0)
+    cv2.imshow("thresh", threshimg)
+    matchres = cv2.matchTemplate(threshimg, snout, cv2.TM_CCOEFF_NORMED)
+    (min_x, max_x, minloc, maxloc) = cv2.minMaxLoc(matchres)
+    (x, y) = maxloc
+
+    snout_w = snout.shape[1]
+    snout_h = snout.shape[0]
+
+    return (max_x, (x, y), (x + snout_w, y + snout_h))
+
+def template_match(img, vis, snout, flipped_snout):
+    res, p1, p2 = perform_match(img, snout)
+
+    if res < 0.8:
+        print "Flipping"
+        res, p1, p2 = perform_match(img, flipped_snout)
+
+    cv2.rectangle(vis, p1, p2, (255, 255, 0), 2)
+
+    print(" Template match: %s" % (res,))
+
 def detect(img, cascade, minsize):
     rects = cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=3, minSize=minsize, flags = cv.CV_HAAR_SCALE_IMAGE)
     if len(rects) == 0:
@@ -45,10 +68,19 @@ if __name__ == '__main__':
     parser.add_argument("--frame_delay", metavar = "SECONDS", type = float,
                     help = "Delay this many seconds between images.", default = 0.0)
 
+    parser.add_argument("--snout", metavar = "SNOUTIMAGE",
+                    help = "The snout image.")
+
     parser.add_argument("images", metavar = "IMAGE", nargs = "+",
                     help = "The Catcierge match images to test. If a directory is specied, all .png files in that directory are used.")
 
     args = parser.parse_args()
+
+    if args.snout:
+        snout_img_tmp = cv2.imread(args.snout)
+        snout_img_gray = cv2.cvtColor(snout_img_tmp, cv2.COLOR_BGR2GRAY)
+        ret, snout_img = cv2.threshold(snout_img_gray, 90, 255, 0)
+        flipped_snout_img = cv2.flip(snout_img, 1)
 
     cascade = cv2.CascadeClassifier(args.cascade)
     #nested = cv2.CascadeClassifier(nested_fn)
@@ -73,10 +105,10 @@ if __name__ == '__main__':
             continue
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        gray = cv2.equalizeHist(gray)
+        gray_eqhist = cv2.equalizeHist(gray)
 
         t = clock()
-        rects = detect(gray, cascade, (args.min_width, args.min_height))
+        rects = detect(gray_eqhist, cascade, (args.min_width, args.min_height))
         match_ok = (len(rects) > 0)
         vis = img.copy()
         draw_rects(vis, rects, (0, 255, 0))
@@ -89,6 +121,10 @@ if __name__ == '__main__':
             h = (y2 - y1)
             w_sum += w
             h_sum += h
+
+            if args.snout:
+                template_match(roi, vis_roi, snout_img, flipped_snout_img)
+
             draw_str(vis, (20, 40), "w: %d h: %d" % (w, h))
         dt = clock() - t
 
