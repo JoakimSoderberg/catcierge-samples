@@ -144,9 +144,11 @@ if __name__ == '__main__':
             match_count += 1
 
             if args.pause_ok:
-                cv2.waitKey(0)
+                if 0xFF & cv2.waitKey(0) == 27:
+                    break
         elif args.pause_fail:
-            cv2.waitKey(0)
+            if 0xFF & cv2.waitKey(0) == 27:
+                break
 
         if 0xFF & cv2.waitKey(5) == 27:
             break
@@ -160,5 +162,5 @@ if __name__ == '__main__':
     else:
         print "No images specified ..."
 
-    cv2.waitKey(0)
+    #cv2.waitKey(0)
     cv2.destroyAllWindows()
