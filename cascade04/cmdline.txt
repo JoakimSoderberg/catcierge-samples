@@ -1,0 +1,1 @@
+opencv_traincascade.exe -vec catcierge_less_20x20.vec -bg negatives.txt -numPos 2000 -numNeg 800 -minHitRate 0.999 -numStages 20 -precalcIdxBufSize 6144 -precalcValBufSize 3072 -w 20 -h 20 -bg negatives.txt -data cascade04 -mode ALL -nsplits 2
