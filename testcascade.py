@@ -23,21 +23,36 @@ def perform_match(img, snout):
     return (max_x, (x, y), (x + snout_w, y + snout_h))
 
 def template_match(img, vis, snout, snout_contours, flipped_snout, flipped_snout_contours):
-    ret, threshimg = cv2.threshold(img, 100, 255, 0)
-    threshimg = cv2.erode(threshimg, kernel)
-    threshimg = cv2.morphologyEx(threshimg, cv2.MORPH_OPEN, kernel_tall)
+    ret, threshimg = cv2.threshold(img, 80, 255, cv2.THRESH_OTSU)
+
+    # Get the image contours.
+    threshimg_tmp = threshimg.copy()
+    img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+
+    countour_count = 0
+    for contour in img_contours:
+        area = cv2.contourArea(contour)
+        print("   Area %f" % (area, ))
+        # TODO: Only include "low" contours. Filter any contours with a min point > half image height.
+        countour_count += (area > 10.0)
+
+    # If we only get one contour, double check if there are more
+    # if we morph the image some.
+    if countour_count == 1:
+        print("Got only one contour, morphing")
+        # TODO: Only do these morphing if there is only 1 contour in the original binary image.
+        threshimg = cv2.erode(threshimg, kernel)
+        threshimg = cv2.morphologyEx(threshimg, cv2.MORPH_OPEN, kernel_tall)
+
+        threshimg_tmp = threshimg.copy()
+        img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+
     cv2.imshow("thresh", threshimg)
     cv2.imshow("snout", snout)
 
-    # Normal snout match.
+    # Use template matching. Normal snout match.
     res, p1, p2 = perform_match(threshimg, snout)
     match_contour = snout_contours
-
-    # Test matching the shape.
-    threshimg_tmp = threshimg.copy()
-    img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-    #shape_match = cv2.matchShapes(match_contour[0], img_contours[0], 1, 0)
-    #print("Shape match %f" % shape_match)
 
     # See if flipped snout is a better match.
     if res < 0.8:
@@ -50,21 +65,29 @@ def template_match(img, vis, snout, snout_contours, flipped_snout, flipped_snout
     # Highlight the template match.
     #cv2.rectangle(vis, p1, p2, (255, 255, 0), 1)
 
-    # Draw the image contours.
-    cv2.drawContours(vis, img_contours, -1, (128, 255, 0))
-
     # Draw the snout contours.
     #vis_roi = vis[p1[1]:p2[1], p1[0]:p2[0]]
     #cv2.drawContours(vis_roi, match_contour, -1, (0, 255, 255))
+
+    # Count the contours with a sizeable enough area.
     countour_count = 0
     for contour in img_contours:
         area = cv2.contourArea(contour)
-        print("   Area %f" % area)
+        print("   Area %f" % (area, ))
         # TODO: Only include "low" contours. Filter any contours with a min point > half image height.
         countour_count += (area > 10.0)
 
+    color = (0, 255, 0)
+    if countour_count >= 2:
+        color = (0, 128, 255)
+
+    # Draw the image contours.
+    cv2.drawContours(vis, img_contours, -1, color)
+
     print("Countour count %d" % countour_count)
     print(" Template match: %s" % (res,))
+
+    return (countour_count >= 2)
 
 def detect(img, cascade, minsize):
     rects = cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=3, minSize=minsize, flags = cv.CV_HAAR_SCALE_IMAGE)
@@ -150,8 +173,10 @@ if __name__ == '__main__':
         rects = detect(gray_eqhist, cascade, (args.min_width, args.min_height))
         match_ok = (len(rects) > 0)
         vis = img.copy()
-        draw_rects(vis, rects, (0, 255, 0))
+        #draw_rects(vis, rects, (0, 255, 0))
         print("Found %d matches" % len(rects))
+        
+        fail = False
 
         for x1, y1, x2, y2 in rects:
             roi = gray[y1:y2, x1:x2]
@@ -162,9 +187,17 @@ if __name__ == '__main__':
             h_sum += h
 
             if args.snout:
-                template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
+                fail = template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
 
             draw_str(vis, (20, 40), "w: %d h: %d" % (w, h))
+        
+        color = (0, 255, 0)
+
+        if fail:
+            color = (0, 0, 255)
+
+        draw_rects(vis, rects, color)
+
         dt = clock() - t
 
         draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
