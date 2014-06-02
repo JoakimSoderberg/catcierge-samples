@@ -10,7 +10,7 @@ import argparse
 import glob
 
 kernel = np.ones((12,12), np.uint8)
-kernel_tall = np.ones((1,5), np.uint8)
+kernel_tall = np.ones((1,2), np.uint8)
 
 def perform_match(img, snout):
     matchres = cv2.matchTemplate(img, snout, cv2.TM_CCOEFF_NORMED)
@@ -23,33 +23,7 @@ def perform_match(img, snout):
     return (max_x, (x, y), (x + snout_w, y + snout_h))
 
 def template_match(img, vis, snout, snout_contours, flipped_snout, flipped_snout_contours):
-    # TODO: This function doesn't only template match, break that part out...
     ret, threshimg = cv2.threshold(img, 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-
-    # Get the image contours.
-    threshimg_tmp = threshimg.copy()
-    img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-
-    countour_count = 0
-    for contour in img_contours:
-        area = cv2.contourArea(contour)
-        print("   Area %f" % (area, ))
-        # TODO: Only include "low" contours. Filter any contours with a min point > half image height.
-        countour_count += (area > 10.0)
-
-    # If we only get one contour, double check if there are more
-    # if we morph the image some.
-    if countour_count == 1:
-        print("Got only one contour, morphing")
-        # TODO: Only do these morphing if there is only 1 contour in the original binary image.
-        threshimg = cv2.erode(threshimg, kernel)
-        threshimg = cv2.morphologyEx(threshimg, cv2.MORPH_OPEN, kernel_tall)
-
-        threshimg_tmp = threshimg.copy()
-        img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-
-    cv2.imshow("thresh", threshimg)
-    cv2.imshow("snout", snout)
 
     # Use template matching. Normal snout match.
     res, p1, p2 = perform_match(threshimg, snout)
@@ -64,19 +38,58 @@ def template_match(img, vis, snout, snout_contours, flipped_snout, flipped_snout
             res, p1, p2, match_contour = res2, p1b, p2b, flipped_snout_contours
 
     # Highlight the template match.
-    #cv2.rectangle(vis, p1, p2, (255, 255, 0), 1)
+    cv2.rectangle(vis, p1, p2, (255, 255, 0), 1)
 
     # Draw the snout contours.
-    #vis_roi = vis[p1[1]:p2[1], p1[0]:p2[0]]
-    #cv2.drawContours(vis_roi, match_contour, -1, (0, 255, 255))
+    vis_roi = vis[p1[1]:p2[1], p1[0]:p2[0]]
+    cv2.drawContours(vis_roi, match_contour, -1, (0, 255, 255))
+
+    print(" Template match: %s" % (res,))
+
+    return (res >= 0.8)
+
+def get_prey_contours(img, vis):
+    # Only use the lower part of the image.
+    # (This will remove some false positives when the snout is too near the edge)
+    w, h = img.shape
+    h2 = h / 2
+    img = img[h2:h, 0:w]
+    vis = vis[h2:h, 0:w]
+
+    ret, threshimg = cv2.threshold(img, 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+
+    # Get the image contours.
+    threshimg_tmp = threshimg.copy()
+    img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+
+    countour_count = 0
+    for contour in img_contours:
+        area = cv2.contourArea(contour)
+        big_enough = (area > 10.0)
+        print("   Area %f %s" % (area, "" if big_enough else "(too small)"))
+        countour_count += (area > 10.0)
+
+    # If we only get one contour, double check if there are more
+    # if we morph the image some.
+    # (If the prey doesn't hang enough from the mouth to touch the bottom
+    # edge of the sub image, this might extend it enough so it does...)
+    if countour_count == 1:
+        print("Got only one contour, morphing")
+        threshimg = cv2.erode(threshimg, kernel)
+        threshimg = cv2.morphologyEx(threshimg, cv2.MORPH_OPEN, kernel_tall)
+
+        threshimg_tmp = threshimg.copy()
+        img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+
+    cv2.imshow("thresh", threshimg)
 
     # Count the contours with a sizeable enough area.
     countour_count = 0
     for contour in img_contours:
         area = cv2.contourArea(contour)
-        print("   Area %f" % (area, ))
-        # TODO: Only include "low" contours. Filter any contours with a min point > half image height.
-        countour_count += (area > 10.0)
+        big_enough = (area > 10.0)
+        print("   Area (morphed) %f %s" % (area, "" if big_enough else "(too small)"))
+        countour_count += big_enough
 
     color = (0, 255, 0)
     if countour_count >= 2:
@@ -88,7 +101,6 @@ def template_match(img, vis, snout, snout_contours, flipped_snout, flipped_snout
     draw_str(vis, (10, 20), "%d" % countour_count)
 
     print("Countour count %d" % countour_count)
-    print(" Template match: %s" % (res,))
 
     return (countour_count == 1)
 
@@ -194,11 +206,13 @@ if __name__ == '__main__':
             h_sum += h
 
             if args.snout:
-                template_match_ok = template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
+                template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
+
+            prey_match_ok = get_prey_contours(roi, vis_roi)
 
             draw_str(vis, (20, 40), "w: %d h: %d" % (w, h))
 
-        if template_match_ok:
+        if prey_match_ok:
             color = (0, 255, 0)
         else:
             color = (0, 0, 255)
