@@ -3,14 +3,13 @@
 import time
 import os
 import numpy as np
+#import skimage
+#from skimage import morphology
 import cv2
 import cv2.cv as cv
 from common import clock, draw_str
 import argparse
 import glob
-
-kernel = np.ones((12,12), np.uint8)
-kernel_tall = np.ones((1,2), np.uint8)
 
 def perform_match(img, snout):
     matchres = cv2.matchTemplate(img, snout, cv2.TM_CCOEFF_NORMED)
@@ -59,14 +58,21 @@ def _get_contour_count(img_contours):
     return countour_count
 
 def get_prey_contours(img, vis):
-    # Only use the lower part of the image.
-    # (This will remove some false positives when the snout is too near the edge)
-    w, h = img.shape
-    h2 = h / 2
-    img = img[h2:h, 0:w]
-    vis = vis[h2:h, 0:w]
+    kernel = np.ones((12,12), np.uint8)
+    kernel_tall = np.ones((5, 1), np.uint8)
 
     ret, threshimg = cv2.threshold(img, 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+
+    # Get the skeleton of the image
+    # (just used to see if it would be useful. Might be faster than findContours)
+    #bla = threshimg
+    #bla2 = cv2.bitwise_not(threshimg)
+    #skeleton = morphology.skeletonize(bla > 0)
+    #skeleton2 = morphology.skeletonize(bla2 > 0)
+    #skeleton = skimage.img_as_ubyte(skeleton)
+    #skeleton2 = skimage.img_as_ubyte(skeleton2)
+    #cv2.imshow("skeleton", skeleton)
+    #cv2.imshow("skeleton2", skeleton2)
 
     # Get the image contours.
     threshimg_tmp = threshimg.copy()
@@ -79,9 +85,16 @@ def get_prey_contours(img, vis):
     # (If the prey doesn't hang enough from the mouth to touch the bottom
     # edge of the sub image, this might extend it enough so it does...)
     if contour_count == 1:
+        cv2.namedWindow("before")
+        cv2.namedWindow("after")
+        cv2.moveWindow("before", 350, 50)
+        cv2.moveWindow("after", 550, 50)
         print("Got only one contour, morphing")
-        threshimg = cv2.erode(threshimg, kernel)
-        threshimg = cv2.morphologyEx(threshimg, cv2.MORPH_OPEN, kernel_tall)
+
+        cv2.imshow('before', threshimg)
+        threshimg = cv2.erode(threshimg, kernel, iterations = 1)
+        threshimg = cv2.morphologyEx(threshimg, cv2.MORPH_OPEN, kernel_tall, iterations = 1)
+        cv2.imshow('after', threshimg)
 
         threshimg_tmp = threshimg.copy()
         img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
@@ -196,14 +209,23 @@ if __name__ == '__main__':
         print("Found %d matches" % len(rects))
         
         template_match_ok = True
+        prey_match_ok = True
 
         for x1, y1, x2, y2 in rects:
-            roi = gray[y1:y2, x1:x2]
-            vis_roi = vis[y1:y2, x1:x2]
             w = (x2 - x1)
             h = (y2 - y1)
             w_sum += w
             h_sum += h
+
+            # Extend the rect a bit to the left.
+            # This way for big mice and such we still get some white on each side of it.
+            x1 = max(x1 - 30, 0)
+
+            # Only use the lower part of the image.
+            # (This will remove some false positives when the snout is too near the edge)
+            y1 = (y1 + w / 2)
+            roi = gray[y1:y2, x1:x2]
+            vis_roi = vis[y1:y2, x1:x2]
 
             if args.snout:
                 template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
