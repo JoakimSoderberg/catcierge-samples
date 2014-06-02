@@ -23,7 +23,8 @@ def perform_match(img, snout):
     return (max_x, (x, y), (x + snout_w, y + snout_h))
 
 def template_match(img, vis, snout, snout_contours, flipped_snout, flipped_snout_contours):
-    ret, threshimg = cv2.threshold(img, 80, 255, cv2.THRESH_OTSU)
+    # TODO: This function doesn't only template match, break that part out...
+    ret, threshimg = cv2.threshold(img, 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
 
     # Get the image contours.
     threshimg_tmp = threshimg.copy()
@@ -79,15 +80,17 @@ def template_match(img, vis, snout, snout_contours, flipped_snout, flipped_snout
 
     color = (0, 255, 0)
     if countour_count >= 2:
-        color = (0, 128, 255)
+        color = (255, 255, 255)
 
     # Draw the image contours.
     cv2.drawContours(vis, img_contours, -1, color)
 
+    draw_str(vis, (10, 20), "%d" % countour_count)
+
     print("Countour count %d" % countour_count)
     print(" Template match: %s" % (res,))
 
-    return (countour_count >= 2)
+    return (countour_count == 1)
 
 def detect(img, cascade, minsize):
     rects = cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=3, minSize=minsize, flags = cv.CV_HAAR_SCALE_IMAGE)
@@ -127,6 +130,10 @@ if __name__ == '__main__':
 
     parser.add_argument("--snout", metavar = "SNOUTIMAGE",
                     help = "The snout image.")
+
+    parser.add_argument("--output", metavar = "OUTPUTDIR",
+                    default = "output/",
+                    help = "Save images in this output dir when pressing s.")
 
     parser.add_argument("images", metavar = "IMAGE", nargs = "+",
                     help = "The Catcierge match images to test. If a directory is specied, all .png files in that directory are used.")
@@ -176,7 +183,7 @@ if __name__ == '__main__':
         #draw_rects(vis, rects, (0, 255, 0))
         print("Found %d matches" % len(rects))
         
-        fail = False
+        template_match_ok = True
 
         for x1, y1, x2, y2 in rects:
             roi = gray[y1:y2, x1:x2]
@@ -187,14 +194,15 @@ if __name__ == '__main__':
             h_sum += h
 
             if args.snout:
-                fail = template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
+                template_match_ok = template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
 
             draw_str(vis, (20, 40), "w: %d h: %d" % (w, h))
-        
-        color = (0, 255, 0)
 
-        if fail:
+        if template_match_ok:
+            color = (0, 255, 0)
+        else:
             color = (0, 0, 255)
+            match_ok = False
 
         draw_rects(vis, rects, color)
 
@@ -212,18 +220,28 @@ if __name__ == '__main__':
 
         time.sleep(args.frame_delay)
 
+        key_delay = 5
+
         if match_ok:
             match_count += 1
 
-            if args.pause_ok:
-                if 0xFF & cv2.waitKey(0) == 27:
-                    break
-        elif args.pause_fail:
-            if 0xFF & cv2.waitKey(0) == 27:
-                break
+            if show_on_ok:
+                key_delay = 0
+        elif show_on_fail:
+            key_delay = 0
 
-        if 0xFF & cv2.waitKey(5) == 27:
+        key = 0xFF & cv2.waitKey(key_delay)
+        print("Key %d" % key)
+
+        if key == 27: # Esc
             break
+        elif key == 115: # s (save)
+            if (not os.path.exists(args.output)):
+                os.makedirs(args.output)
+
+            save_path = os.path.join(args.output, os.path.basename(img_path)) + "_screenshot.png"
+            print("Saving image %s" % save_path)
+            cv2.imwrite(save_path, vis)
 
     if img_count > 0:
         print("%d of %d matches ok (%d)" % (match_count, img_count, float(match_count) / img_count))
