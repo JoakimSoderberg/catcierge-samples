@@ -91,12 +91,12 @@ def get_prey_contours(img, vis):
         cv2.moveWindow("after", 550, 50)
         print("Got only one contour, morphing")
 
-        cv2.imshow('before', threshimg)
-        threshimg = cv2.erode(threshimg, kernel, iterations = 1)
-        threshimg = cv2.morphologyEx(threshimg, cv2.MORPH_OPEN, kernel_tall, iterations = 1)
-        cv2.imshow('after', threshimg)
-
         threshimg_tmp = threshimg.copy()
+        cv2.imshow('before', threshimg)
+        threshimg = cv2.erode(threshimg_tmp, kernel, iterations = 1)
+        threshimg = cv2.morphologyEx(threshimg_tmp, cv2.MORPH_OPEN, kernel_tall, iterations = 1)
+        cv2.imshow('after', threshimg_tmp)
+
         img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
 
     cv2.imshow("thresh", threshimg)
@@ -115,7 +115,26 @@ def get_prey_contours(img, vis):
 
     print("Countour count %d" % contour_count)
 
-    return (contour_count == 1)
+    # Calculate the direction by comparing the left most
+    # and right most columns in the thresholded image.
+    # We're most likely going in the direction with more white.
+    h, w = img.shape
+    print("w: %d, h: %d" % (w, h))
+    left_side = sum(threshimg[0:h,0]) / 255
+    right_side = sum(threshimg[0:h, (w - 1)]) / 255
+
+    print("White pixel counts => Left side %d, Right side %d" % (left_side, right_side))
+
+    # If the differeence is too close we set it to unknown.
+    if abs(left_side - right_side) > 25:
+        if left_side > right_side:
+            direction = "Left"
+        else:
+            direction = "Right"
+    else:
+        direction = "Unknown"
+
+    return (contour_count == 1), direction
 
 def detect(img, cascade, minsize):
     rects = cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=3, minSize=minsize, flags = cv.CV_HAAR_SCALE_IMAGE)
@@ -210,6 +229,7 @@ if __name__ == '__main__':
         
         template_match_ok = True
         prey_match_ok = True
+        direction = "Unknown"
 
         for x1, y1, x2, y2 in rects:
             w = (x2 - x1)
@@ -230,9 +250,10 @@ if __name__ == '__main__':
             if args.snout:
                 template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
 
-            prey_match_ok = get_prey_contours(roi, vis_roi)
+            prey_match_ok, direction = get_prey_contours(roi, vis_roi)
 
-            draw_str(vis, (20, 40), "w: %d h: %d" % (w, h))
+            #draw_str(vis, (20, 40), "w: %d h: %d" % (w, h))
+            draw_str(vis, (20, 40), "Direction %s" % direction)
 
         if prey_match_ok:
             color = (0, 255, 0)
