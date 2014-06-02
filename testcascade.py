@@ -48,6 +48,16 @@ def template_match(img, vis, snout, snout_contours, flipped_snout, flipped_snout
 
     return (res >= 0.8)
 
+def _get_contour_count(img_contours):
+    countour_count = 0
+    for contour in img_contours:
+        area = cv2.contourArea(contour)
+        big_enough = (area > 10.0)
+        print("   Area %f %s" % (area, "" if big_enough else "(too small)"))
+        countour_count += (area > 10.0)
+
+    return countour_count
+
 def get_prey_contours(img, vis):
     # Only use the lower part of the image.
     # (This will remove some false positives when the snout is too near the edge)
@@ -62,18 +72,13 @@ def get_prey_contours(img, vis):
     threshimg_tmp = threshimg.copy()
     img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
 
-    countour_count = 0
-    for contour in img_contours:
-        area = cv2.contourArea(contour)
-        big_enough = (area > 10.0)
-        print("   Area %f %s" % (area, "" if big_enough else "(too small)"))
-        countour_count += (area > 10.0)
+    contour_count = _get_contour_count(img_contours)
 
     # If we only get one contour, double check if there are more
     # if we morph the image some.
     # (If the prey doesn't hang enough from the mouth to touch the bottom
     # edge of the sub image, this might extend it enough so it does...)
-    if countour_count == 1:
+    if contour_count == 1:
         print("Got only one contour, morphing")
         threshimg = cv2.erode(threshimg, kernel)
         threshimg = cv2.morphologyEx(threshimg, cv2.MORPH_OPEN, kernel_tall)
@@ -84,25 +89,20 @@ def get_prey_contours(img, vis):
     cv2.imshow("thresh", threshimg)
 
     # Count the contours with a sizeable enough area.
-    countour_count = 0
-    for contour in img_contours:
-        area = cv2.contourArea(contour)
-        big_enough = (area > 10.0)
-        print("   Area (morphed) %f %s" % (area, "" if big_enough else "(too small)"))
-        countour_count += big_enough
+    contour_count = _get_contour_count(img_contours)
 
     color = (0, 255, 0)
-    if countour_count >= 2:
+    if contour_count >= 2:
         color = (255, 255, 255)
 
     # Draw the image contours.
     cv2.drawContours(vis, img_contours, -1, color)
 
-    draw_str(vis, (10, 20), "%d" % countour_count)
+    draw_str(vis, (10, 20), "%d" % contour_count)
 
-    print("Countour count %d" % countour_count)
+    print("Countour count %d" % contour_count)
 
-    return (countour_count == 1)
+    return (contour_count == 1)
 
 def detect(img, cascade, minsize):
     rects = cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=3, minSize=minsize, flags = cv.CV_HAAR_SCALE_IMAGE)
