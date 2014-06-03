@@ -92,9 +92,9 @@ def get_prey_contours(img, vis):
         print("Got only one contour, morphing")
 
         threshimg_tmp = threshimg.copy()
-        cv2.imshow('before', threshimg)
-        threshimg = cv2.erode(threshimg_tmp, kernel, iterations = 1)
-        threshimg = cv2.morphologyEx(threshimg_tmp, cv2.MORPH_OPEN, kernel_tall, iterations = 1)
+        cv2.imshow('before', threshimg_tmp)
+        threshimg_tmp = cv2.erode(threshimg_tmp, kernel, iterations = 1)
+        threshimg_tmp = cv2.morphologyEx(threshimg_tmp, cv2.MORPH_OPEN, kernel_tall, iterations = 1)
         cv2.imshow('after', threshimg_tmp)
 
         img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
