@@ -22,6 +22,10 @@ def perform_match(img, snout):
     return (max_x, (x, y), (x + snout_w, y + snout_h))
 
 def template_match(img, vis, snout, snout_contours, flipped_snout, flipped_snout_contours):
+    if (snout.shape > img.shape):
+        print("Snout %r > image %r" % (snout.shape, img.shape))
+        return False
+
     ret, threshimg = cv2.threshold(img, 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
 
     # Use template matching. Normal snout match.
@@ -227,8 +231,8 @@ if __name__ == '__main__':
         #draw_rects(vis, rects, (0, 255, 0))
         print("Found %d matches" % len(rects))
         
-        template_match_ok = True
-        prey_match_ok = True
+        template_match_ok = False
+        prey_match_ok = False
         direction = "Unknown"
 
         for x1, y1, x2, y2 in rects:
@@ -248,14 +252,13 @@ if __name__ == '__main__':
             vis_roi = vis[y1:y2, x1:x2]
 
             if args.snout:
-                template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
+                template_match_ok = template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
+            else:
+                prey_match_ok, direction = get_prey_contours(roi, vis_roi)
 
-            prey_match_ok, direction = get_prey_contours(roi, vis_roi)
-
-            #draw_str(vis, (20, 40), "w: %d h: %d" % (w, h))
             draw_str(vis, (20, 40), "Direction %s" % direction)
 
-        if prey_match_ok:
+        if prey_match_ok or template_match_ok:
             color = (0, 255, 0)
         else:
             color = (0, 0, 255)
