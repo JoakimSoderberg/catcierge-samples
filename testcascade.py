@@ -61,11 +61,64 @@ def _get_contour_count(img_contours):
 
     return countour_count
 
+def adaptive_thresh(img):
+    cv2.namedWindow("adpth1")
+    cv2.namedWindow("adpth2")
+    cv2.namedWindow("adpth3")
+    cv2.moveWindow("adpth1", 350, 150)
+    cv2.moveWindow("adpth2", 550, 150)
+    cv2.moveWindow("adpth3", 750, 150)
+
+    # Adaptive threshold
+    adapt_thresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 5)
+    cv2.imshow("adpth1", adapt_thresh)
+
+    kernel2 = np.ones((2,2), np.uint8)
+    adapt_thresh = cv2.morphologyEx(adapt_thresh, cv2.MORPH_CLOSE, kernel2, iterations = 1)
+    """
+    adapt_thresh = cv2.dilate(adapt_thresh, kernel2, iterations = 2)
+    cv2.imshow("adpth2", adapt_thresh)
+
+    #kernel3 = np.ones((2,2), np.uint8)
+    #cv2.erode(adapt_thresh, kernel3, iterations = 3)
+    #adapt_thresh = cv2.morphologyEx(adapt_thresh, cv2.MORPH_OPEN, kernel3, iterations = 3)
+    #kernel3 = np.ones((12,12), np.uint8)
+    adapt_thresh = cv2.erode(adapt_thresh, kernel2, iterations = 4)
+    cv2.imshow("adpth3", adapt_thresh)
+"""
+    return adapt_thresh
+
+def get_direction(img):
+
+    ret, threshimg = cv2.threshold(img, 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+
+    # Calculate the direction by comparing the left most
+    # and right most columns in the thresholded image.
+    # We're most likely going in the direction with more white.
+    h, w = img.shape
+    print("w: %d, h: %d" % (w, h))
+    left_side = sum(threshimg[0:h,0]) / 255
+    right_side = sum(threshimg[0:h, (w - 1)]) / 255
+
+    print("White pixel counts => Left side %d, Right side %d" % (left_side, right_side))
+
+    # If the differeence is too close we set it to unknown.
+    if abs(left_side - right_side) > 25:
+        if left_side > right_side:
+            direction = "Left"
+        else:
+            direction = "Right"
+    else:
+        direction = "Unknown"
+
+    return direction
+
 def get_prey_contours(img, vis):
     kernel = np.ones((12,12), np.uint8)
     kernel_tall = np.ones((5, 1), np.uint8)
 
     ret, threshimg = cv2.threshold(img, 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    cv2.imshow("thresh", threshimg)
 
     # Get the skeleton of the image
     # (just used to see if it would be useful. Might be faster than findContours)
@@ -101,12 +154,39 @@ def get_prey_contours(img, vis):
         threshimg_tmp = cv2.morphologyEx(threshimg_tmp, cv2.MORPH_OPEN, kernel_tall, iterations = 1)
         cv2.imshow('after', threshimg_tmp)
 
+        # Make a copy before it's destroyed for next try below...
+        bla = threshimg_tmp.copy()
+
         img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
 
-    cv2.imshow("thresh", threshimg)
+        # Count the contours with a sizeable enough area.
+        contour_count = _get_contour_count(img_contours)
 
-    # Count the contours with a sizeable enough area.
-    contour_count = _get_contour_count(img_contours)
+    # If we still haven't found anything try adaptive threshold
+    # and add that to our current image. This will find thin
+    # forms such as a mouse tail that might no be catched by the normal threshold.
+    if (contour_count == 1):
+        awesome = adaptive_thresh(img)
+
+        # Invert the images so that we can add them
+        # (When adding, the areas need to be white)
+        awesome = cv2.bitwise_not(awesome)
+        thrnot = cv2.bitwise_not(bla)
+
+        # Add the old image and new to get both
+        # the profile and thin features.
+        awesome = cv2.add(awesome, thrnot)
+
+        # Finally invert the result.
+        awesome = cv2.bitwise_not(awesome)
+
+        # Get rid of any extra noise.
+        kernel2 = np.ones((3,3), np.uint8)
+        awesome = cv2.morphologyEx(awesome, cv2.MORPH_OPEN, kernel2, iterations = 2)
+        cv2.imshow("awesome", awesome)
+
+        img_contours, img_hierarchy = cv2.findContours(awesome, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+        contour_count = _get_contour_count(img_contours)
 
     color = (0, 255, 0)
     if contour_count >= 2:
@@ -119,26 +199,7 @@ def get_prey_contours(img, vis):
 
     print("Countour count %d" % contour_count)
 
-    # Calculate the direction by comparing the left most
-    # and right most columns in the thresholded image.
-    # We're most likely going in the direction with more white.
-    h, w = img.shape
-    print("w: %d, h: %d" % (w, h))
-    left_side = sum(threshimg[0:h,0]) / 255
-    right_side = sum(threshimg[0:h, (w - 1)]) / 255
-
-    print("White pixel counts => Left side %d, Right side %d" % (left_side, right_side))
-
-    # If the differeence is too close we set it to unknown.
-    if abs(left_side - right_side) > 25:
-        if left_side > right_side:
-            direction = "Left"
-        else:
-            direction = "Right"
-    else:
-        direction = "Unknown"
-
-    return (contour_count == 1), direction
+    return (contour_count == 1)
 
 def detect(img, cascade, minsize):
     rects = cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=3, minSize=minsize, flags = cv.CV_HAAR_SCALE_IMAGE)
@@ -241,6 +302,10 @@ if __name__ == '__main__':
             w_sum += w
             h_sum += h
 
+            org_roi = gray[y1:y2, x1:x2]
+
+            direction = get_direction(org_roi)
+
             # Extend the rect a bit to the left.
             # This way for big mice and such we still get some white on each side of it.
             x1 = max(x1 - 30, 0)
@@ -254,7 +319,8 @@ if __name__ == '__main__':
             if args.snout:
                 template_match_ok = template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
             else:
-                prey_match_ok, direction = get_prey_contours(roi, vis_roi)
+                adaptive_thresh(org_roi)
+                prey_match_ok = get_prey_contours(roi, vis_roi)
 
             draw_str(vis, (20, 40), "Direction %s" % direction)
 
