@@ -113,6 +113,82 @@ def get_direction(img):
 
     return direction
 
+def get_prey_contours_alt(img, vis):
+    kernel = np.ones((12,12), np.uint8)
+    kernel_tall = np.ones((5, 1), np.uint8)
+    cv2.namedWindow("org")
+    cv2.moveWindow("org", 450, 0)
+    cv2.namedWindow("thresh")
+    cv2.moveWindow("thresh", 300, 100)
+    cv2.namedWindow("not_thresh")
+    cv2.moveWindow("not_thresh", 300, 200)
+    cv2.namedWindow("adpthresh")
+    cv2.moveWindow("adpthresh", 600, 100)
+    cv2.namedWindow("not_adpthresh")
+    cv2.moveWindow("not_adpthresh", 600, 200)
+    cv2.namedWindow("combined")
+    cv2.moveWindow("combined", 450, 300)
+    cv2.namedWindow("opened_combined")
+    cv2.moveWindow("opened_combined", 450, 400)
+    cv2.namedWindow("eroded_combined")
+    cv2.moveWindow("eroded_combined", 450, 500)
+    cv2.namedWindow("inv_combined")
+    cv2.moveWindow("inv_combined", 450, 600)
+
+    cv2.imshow("org", img)
+
+    # Normal threshold inverted.
+    ret, threshimg = cv2.threshold(img, 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    cv2.imshow("thresh", threshimg)
+
+    not_thresh = cv2.bitwise_not(threshimg)
+    cv2.imshow("not_thresh", not_thresh)
+
+    # Adaptive threshold inverted.
+    adpthresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 5)
+    cv2.imshow("adpthresh", adpthresh)
+
+    not_adpthresh = cv2.bitwise_not(adpthresh)
+    cv2.imshow("not_adpthresh", not_adpthresh)
+
+    # We invert the above so we can add them (white is 1, black 0).
+    combined = cv2.add(not_thresh, not_adpthresh)
+    cv2.imshow("combined", combined)
+
+    kernel = np.ones((2, 2), np.uint8)
+    opened_combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel, iterations = 2)
+    cv2.imshow("opened_combined", opened_combined)
+
+    kernel = np.ones((3, 3), np.uint8)
+    eroded_combined = cv2.dilate(opened_combined, kernel, iterations = 3)
+    cv2.imshow("eroded_combined", eroded_combined)
+
+    # Go back to black on white.
+    inv_combined = cv2.bitwise_not(eroded_combined)
+    cv2.imshow("inv_combined", inv_combined)
+
+    #adapt_thresh = cv2.adaptiveThreshold(notimg, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 5)
+    #cv2.imshow("adpthresh2", adapt_thresh)
+
+    # Get the image contours.
+    threshimg_tmp = inv_combined.copy()
+    img_contours, img_hierarchy = cv2.findContours(threshimg_tmp, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+
+    contour_count = _get_contour_count(img_contours)
+
+    color = (0, 255, 0)
+    if contour_count >= 2:
+        color = (255, 255, 255)
+
+    # Draw the image contours.
+    cv2.drawContours(vis, img_contours, -1, color)
+
+    draw_str(vis, (10, 20), "%d" % contour_count)
+
+    print("Countour count %d" % contour_count)
+
+    return (contour_count == 1)
+
 def get_prey_contours(img, vis):
     kernel = np.ones((12,12), np.uint8)
     kernel_tall = np.ones((5, 1), np.uint8)
@@ -242,7 +318,10 @@ if __name__ == '__main__':
 
     parser.add_argument("--output", metavar = "OUTPUTDIR",
                     default = "output/",
-                    help = "Save images in this output dir when pressing s.")
+                    help = "Save images in this output dir when pressing 's'.")
+
+    parser.add_argument("--old_prey_method", action = "store_true",
+                    help = "Use the old prey matching method.")
 
     parser.add_argument("images", metavar = "IMAGE", nargs = "+",
                     help = "The Catcierge match images to test. If a directory is specied, all .png files in that directory are used.")
@@ -319,8 +398,10 @@ if __name__ == '__main__':
             if args.snout:
                 template_match_ok = template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
             else:
-                adaptive_thresh(org_roi)
-                prey_match_ok = get_prey_contours(roi, vis_roi)
+                if args.old_prey_method:
+                    prey_match_ok = get_prey_contours(roi, vis_roi)
+                else:
+                    prey_match_ok = get_prey_contours_alt(roi, vis_roi)
 
             draw_str(vis, (20, 40), "Direction %s" % direction)
 
@@ -340,7 +421,9 @@ if __name__ == '__main__':
         show_on_fail = (not match_ok and args.pause_fail)
 
         if args.show or show_on_ok or show_on_fail:
-            cv2.imshow('catcierge', vis)
+            cv2.namedWindow("catcierge")
+            cv2.moveWindow("catcierge", 0, 200)
+            cv2.imshow("catcierge", vis)
 
         img_count += 1
 
