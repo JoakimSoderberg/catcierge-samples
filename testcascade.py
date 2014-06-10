@@ -138,17 +138,17 @@ def get_prey_contours_alt(img, vis):
     cv2.imshow("org", img)
 
     # Normal threshold inverted.
-    ret, threshimg = cv2.threshold(img, 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    ret, threshimg = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
     cv2.imshow("thresh", threshimg)
 
-    not_thresh = cv2.bitwise_not(threshimg)
+    not_thresh = threshimg #cv2.bitwise_not(threshimg)
     cv2.imshow("not_thresh", not_thresh)
 
     # Adaptive threshold inverted.
-    adpthresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 5)
+    adpthresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 5)
     cv2.imshow("adpthresh", adpthresh)
 
-    not_adpthresh = cv2.bitwise_not(adpthresh)
+    not_adpthresh = adpthresh # cv2.bitwise_not(adpthresh)
     cv2.imshow("not_adpthresh", not_adpthresh)
 
     # We invert the above so we can add them (white is 1, black 0).
@@ -160,15 +160,12 @@ def get_prey_contours_alt(img, vis):
     cv2.imshow("opened_combined", opened_combined)
 
     kernel = np.ones((3, 3), np.uint8)
-    eroded_combined = cv2.dilate(opened_combined, kernel, iterations = 3)
-    cv2.imshow("eroded_combined", eroded_combined)
+    dilated_combined = cv2.dilate(opened_combined, kernel, iterations = 3)
+    cv2.imshow("dilated_combined", dilated_combined)
 
     # Go back to black on white.
-    inv_combined = cv2.bitwise_not(eroded_combined)
+    inv_combined = cv2.bitwise_not(dilated_combined)
     cv2.imshow("inv_combined", inv_combined)
-
-    #adapt_thresh = cv2.adaptiveThreshold(notimg, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 5)
-    #cv2.imshow("adpthresh2", adapt_thresh)
 
     # Get the image contours.
     threshimg_tmp = inv_combined.copy()
