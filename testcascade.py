@@ -10,6 +10,7 @@ import cv2.cv as cv
 from common import clock, draw_str
 import argparse
 import glob
+from subprocess import call
 
 save_all = False
 
@@ -139,13 +140,13 @@ def get_prey_contours_alt(img_name, img, vis):
 
     cv2.imshow("org", img)
     if save_all:
-        cv2.imwrite("%s_01_original.png" % img_name, img)
+        cv2.imwrite("%s_02_original.png" % img_name, img)
 
     # Normal threshold inverted.
     ret, threshimg = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
     cv2.imshow("thresh", threshimg)
     if save_all:
-        cv2.imwrite("%s_02_thresh.png" % img_name, threshimg)
+        cv2.imwrite("%s_03_thresh.png" % img_name, threshimg)
 
     # cv2.THRESH_BINARY_INV above does this..
     #not_thresh = threshimg #cv2.bitwise_not(threshimg)
@@ -155,7 +156,7 @@ def get_prey_contours_alt(img_name, img, vis):
     adpthresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 5)
     cv2.imshow("adpthresh", adpthresh)
     if save_all:
-        cv2.imwrite("%s_03_adpthresh.png" % img_name, adpthresh)
+        cv2.imwrite("%s_04_adpthresh.png" % img_name, adpthresh)
 
     #not_adpthresh = adpthresh # cv2.bitwise_not(adpthresh)
     #cv2.imshow("not_adpthresh", not_adpthresh)
@@ -164,25 +165,25 @@ def get_prey_contours_alt(img_name, img, vis):
     combined = cv2.add(threshimg, adpthresh)
     cv2.imshow("combined", combined)
     if save_all:
-        cv2.imwrite("%s_04_combined.png" % img_name, combined)
+        cv2.imwrite("%s_05_combined.png" % img_name, combined)
 
     kernel = np.ones((2, 2), np.uint8)
     opened_combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel, iterations = 2)
     cv2.imshow("opened_combined", opened_combined)
     if save_all:
-        cv2.imwrite("%s_05_opened_combined.png" % img_name, opened_combined)
+        cv2.imwrite("%s_06_opened_combined.png" % img_name, opened_combined)
 
     kernel = np.ones((3, 3), np.uint8)
     dilated_combined = cv2.dilate(opened_combined, kernel, iterations = 3)
     cv2.imshow("dilated_combined", dilated_combined)
     if save_all:
-        cv2.imwrite("%s_06_dilated_combined.png" % img_name, dilated_combined)
+        cv2.imwrite("%s_07_dilated_combined.png" % img_name, dilated_combined)
 
     # Go back to black on white.
     inv_combined = cv2.bitwise_not(dilated_combined)
     cv2.imshow("inv_combined", inv_combined)
     if save_all:
-        cv2.imwrite("%s_07_inv_combined.png" % img_name, inv_combined)
+        cv2.imwrite("%s_08_inv_combined.png" % img_name, inv_combined)
 
     # Get the image contours.
     threshimg_tmp = inv_combined.copy()
@@ -202,7 +203,7 @@ def get_prey_contours_alt(img_name, img, vis):
     print("Countour count %d" % contour_count)
 
     if save_all:
-        cv2.imwrite("%s_08_contours.png" % img_name, vis)
+        cv2.imwrite("%s_09_contours.png" % img_name, vis)
 
     return (contour_count == 1)
 
@@ -340,6 +341,9 @@ if __name__ == '__main__':
     parser.add_argument("--save_all", action = "store_true",
                     help = "Save all the steps for a match (a lot of images)")
 
+    parser.add_argument("--montage", action = "store_true",
+                    help = "If --save_all is used, this creates a montage from its output")
+
     parser.add_argument("--old_prey_method", action = "store_true",
                     help = "Use the old prey matching method.")
 
@@ -410,6 +414,9 @@ if __name__ == '__main__':
 
             org_roi = gray[y1:y2, x1:x2]
 
+            if save_all:
+                cv2.imwrite("%s_01_uncropped.png" % save_name, org_roi)
+
             direction = get_direction(org_roi)
 
             # Extend the rect a bit to the left.
@@ -445,7 +452,7 @@ if __name__ == '__main__':
         draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
 
         if save_all:
-            cv2.imwrite("%s_09_final.png" % save_name, vis)
+            cv2.imwrite("%s_10_final.png" % save_name, vis)
 
         show_on_ok = (match_ok and args.pause_ok)
         show_on_fail = (not match_ok and args.pause_fail)
@@ -454,6 +461,20 @@ if __name__ == '__main__':
             cv2.namedWindow("catcierge")
             cv2.moveWindow("catcierge", 0, 200)
             cv2.imshow("catcierge", vis)
+
+        if args.save_all and args.montage:
+            #montage -background black fail01.png_{01,02,03,04,05,06,07,08,09}*.png fail01_montage_mid.png
+            #montage -background black fail01.png_00*.png fail01_montage_mid.png fail01.png_10_final.png fail01_montage.png
+            
+            call(["montage", "-background", "black"] 
+                + glob.glob("%s_0[1-9]*.png" % save_name) 
+                + ["%s_montage_mid.png" % save_name])
+
+            call(["montage", "-background", "black", "-tile", "1x3", "-geometry", "+2+2"] 
+                + glob.glob("%s_00*.png" % save_name) 
+                + ["%s_montage_mid.png" % save_name]
+                + ["%s_10_final.png" % save_name]
+                + ["%s_montage.png" % save_name])
 
         img_count += 1
 
@@ -488,6 +509,7 @@ if __name__ == '__main__':
         w_avg = float(w_sum) / img_count
         h_avg = float(h_sum) / img_count
         print("(%f, %f) average size of match" % (w_avg, h_avg))
+
     else:
         print "No images specified ..."
 
