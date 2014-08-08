@@ -11,6 +11,8 @@ from common import clock, draw_str
 import argparse
 import glob
 
+save_all = False
+
 def perform_match(img, snout):
     matchres = cv2.matchTemplate(img, snout, cv2.TM_CCOEFF_NORMED)
     (min_x, max_x, minloc, maxloc) = cv2.minMaxLoc(matchres)
@@ -113,19 +115,19 @@ def get_direction(img):
 
     return direction
 
-def get_prey_contours_alt(img, vis):
+def get_prey_contours_alt(img_name, img, vis):
     kernel = np.ones((12,12), np.uint8)
     kernel_tall = np.ones((5, 1), np.uint8)
     cv2.namedWindow("org")
     cv2.moveWindow("org", 450, 0)
     cv2.namedWindow("thresh")
     cv2.moveWindow("thresh", 300, 100)
-    cv2.namedWindow("not_thresh")
-    cv2.moveWindow("not_thresh", 300, 200)
+    #cv2.namedWindow("not_thresh")
+    #cv2.moveWindow("not_thresh", 300, 200)
     cv2.namedWindow("adpthresh")
     cv2.moveWindow("adpthresh", 600, 100)
-    cv2.namedWindow("not_adpthresh")
-    cv2.moveWindow("not_adpthresh", 600, 200)
+    #cv2.namedWindow("not_adpthresh")
+    #cv2.moveWindow("not_adpthresh", 600, 200)
     cv2.namedWindow("combined")
     cv2.moveWindow("combined", 450, 300)
     cv2.namedWindow("opened_combined")
@@ -136,36 +138,51 @@ def get_prey_contours_alt(img, vis):
     cv2.moveWindow("inv_combined", 450, 600)
 
     cv2.imshow("org", img)
+    if save_all:
+        cv2.imwrite("%s_01_original.png" % img_name, img)
 
     # Normal threshold inverted.
     ret, threshimg = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
     cv2.imshow("thresh", threshimg)
+    if save_all:
+        cv2.imwrite("%s_02_thresh.png" % img_name, threshimg)
 
-    not_thresh = threshimg #cv2.bitwise_not(threshimg)
-    cv2.imshow("not_thresh", not_thresh)
+    # cv2.THRESH_BINARY_INV above does this..
+    #not_thresh = threshimg #cv2.bitwise_not(threshimg)
+    #cv2.imshow("not_thresh", not_thresh)
 
     # Adaptive threshold inverted.
     adpthresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 5)
     cv2.imshow("adpthresh", adpthresh)
+    if save_all:
+        cv2.imwrite("%s_03_adpthresh.png" % img_name, adpthresh)
 
-    not_adpthresh = adpthresh # cv2.bitwise_not(adpthresh)
-    cv2.imshow("not_adpthresh", not_adpthresh)
+    #not_adpthresh = adpthresh # cv2.bitwise_not(adpthresh)
+    #cv2.imshow("not_adpthresh", not_adpthresh)
 
-    # We invert the above so we can add them (white is 1, black 0).
-    combined = cv2.add(not_thresh, not_adpthresh)
+    # We invert the thresholding above so we can add them (white is 1, black 0).
+    combined = cv2.add(threshimg, adpthresh)
     cv2.imshow("combined", combined)
+    if save_all:
+        cv2.imwrite("%s_04_combined.png" % img_name, combined)
 
     kernel = np.ones((2, 2), np.uint8)
     opened_combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel, iterations = 2)
     cv2.imshow("opened_combined", opened_combined)
+    if save_all:
+        cv2.imwrite("%s_05_opened_combined.png" % img_name, opened_combined)
 
     kernel = np.ones((3, 3), np.uint8)
     dilated_combined = cv2.dilate(opened_combined, kernel, iterations = 3)
     cv2.imshow("dilated_combined", dilated_combined)
+    if save_all:
+        cv2.imwrite("%s_06_dilated_combined.png" % img_name, dilated_combined)
 
     # Go back to black on white.
     inv_combined = cv2.bitwise_not(dilated_combined)
     cv2.imshow("inv_combined", inv_combined)
+    if save_all:
+        cv2.imwrite("%s_07_inv_combined.png" % img_name, inv_combined)
 
     # Get the image contours.
     threshimg_tmp = inv_combined.copy()
@@ -184,9 +201,12 @@ def get_prey_contours_alt(img, vis):
 
     print("Countour count %d" % contour_count)
 
+    if save_all:
+        cv2.imwrite("%s_08_contours.png" % img_name, vis)
+
     return (contour_count == 1)
 
-def get_prey_contours(img, vis):
+def get_prey_contours(img_name, img, vis):
     kernel = np.ones((12,12), np.uint8)
     kernel_tall = np.ones((5, 1), np.uint8)
 
@@ -317,6 +337,9 @@ if __name__ == '__main__':
                     default = "output/",
                     help = "Save images in this output dir when pressing 's'.")
 
+    parser.add_argument("--save_all", action = "store_true",
+                    help = "Save all the steps for a match (a lot of images)")
+
     parser.add_argument("--old_prey_method", action = "store_true",
                     help = "Use the old prey matching method.")
 
@@ -324,6 +347,8 @@ if __name__ == '__main__':
                     help = "The Catcierge match images to test. If a directory is specied, all .png files in that directory are used.")
 
     args = parser.parse_args()
+
+    save_all = args.save_all
 
     if args.snout:
         snout_img_tmp = cv2.imread(args.snout)
@@ -353,10 +378,15 @@ if __name__ == '__main__':
     h_sum = 0
 
     for img_path in image_paths:
+        img_name = os.path.basename(img_path)
+        save_name = os.path.join(args.output, img_name)
         print("%s" % img_path)
         img = cv2.imread(img_path)
         if img == None:
             continue
+
+        if save_all:
+            cv2.imwrite("%s_00_image.png" % save_name, img)
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         gray_eqhist = cv2.equalizeHist(gray)
@@ -396,9 +426,9 @@ if __name__ == '__main__':
                 template_match_ok = template_match(roi, vis_roi, snout_img, snout_contours, flipped_snout_img, flipped_snout_contours)
             else:
                 if args.old_prey_method:
-                    prey_match_ok = get_prey_contours(roi, vis_roi)
+                    prey_match_ok = get_prey_contours(save_name, roi, vis_roi)
                 else:
-                    prey_match_ok = get_prey_contours_alt(roi, vis_roi)
+                    prey_match_ok = get_prey_contours_alt(save_name, roi, vis_roi)
 
             draw_str(vis, (20, 40), "Direction %s" % direction)
 
@@ -413,6 +443,9 @@ if __name__ == '__main__':
         dt = clock() - t
 
         draw_str(vis, (20, 20), 'time: %.1f ms' % (dt*1000))
+
+        if save_all:
+            cv2.imwrite("%s_09_final.png" % save_name, vis)
 
         show_on_ok = (match_ok and args.pause_ok)
         show_on_fail = (not match_ok and args.pause_fail)
